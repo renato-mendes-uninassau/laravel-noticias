@@ -3,15 +3,19 @@
   "dockerComposeFile": "docker-compose.yml",
   "service": "workspace",
   "workspaceFolder": "/workspace/laravel-noticias",
-  "forwardPorts": [8000, 3306],
-  "extensions": [
-    "bmewburn.vscode-intelephense-client",
-    "ms-azuretools.vscode-docker",
-    "editorconfig.editorconfig",
-    "esbenp.prettier-vscode"
-  ],
-  "settings": {
-    "terminal.integrated.shell.linux": "/bin/bash"
+  "forwardPorts": [8000],
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bmewburn.vscode-intelephense-client",
+        "ms-azuretools.vscode-docker",
+        "editorconfig.editorconfig",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "terminal.integrated.shell.linux": "/bin/bash"
+      }
+    }
   },
   "postCreateCommand": "composer --version || true",
   "remoteUser": "vscode"
