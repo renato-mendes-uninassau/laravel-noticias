@@ -295,8 +295,10 @@ php artisan migrate
 
 **O que isso faz?**
 - Cria tabela `usuarios` (name, email, password, is_admin)
-- Cria tabela `tipos_noticias` (nome, slug)
-- Cria tabela `noticias` (titulo, slug, resumo, conteudo, publicado_em, etc)
+- Cria tabela `tipos_noticias` (nome, slug) ← Primeiro!
+- Cria tabela `noticias` (titulo, slug, resumo, conteudo, publicado_em, etc) ← Depois!
+
+⚠️ **Ordem importante**: `tipos_noticias` deve ser criada ANTES de `noticias` porque esta última tem uma chave estrangeira (`tipo_noticia_id`) que referencia a primeira. Os timestamps dos arquivos garantem essa ordem.
 
 ### 2. Execute os Seeders
 
@@ -395,10 +397,10 @@ resources/
         └── login.blade.php
 
 database/
-├── migrations/              # Migrações do banco
+├── migrations/              # Migrações do banco (ordem de execução)
 │   ├── 2025_11_03_232158_create_usuarios_table.php
-│   ├── 2025_11_03_232513_create_tipo_noticias_table.php
-│   └── 2025_11_03_232514_create_noticias_table.php
+│   ├── 2025_11_03_232512_create_tipo_noticias_table.php  ← Executa ANTES
+│   └── 2025_11_03_232513_create_noticias_table.php       ← Executa DEPOIS
 ├── seeders/                 # Populadores de dados
 │   ├── UsuarioSeeder.php
 │   ├── TipoNoticiaSeeder.php
@@ -624,6 +626,118 @@ class EhAdmin
 ```
 
 ⚠️ **Importante**: No Laravel 11+, a configuração de middleware mudou do `app/Http/Kernel.php` (que não existe mais) para `bootstrap/app.php`.
+
+#### Middleware Trust Proxies (Configuração para Codespaces/Produção)
+
+**O que é e por que precisamos dele?**
+
+Quando você acessa uma aplicação Laravel diretamente (localhost), o Laravel consegue identificar corretamente:
+- O protocolo usado (http/https)
+- O host (domínio)
+- A porta
+- O IP do cliente
+
+Porém, em ambientes como **GitHub Codespaces**, **servidores em produção atrás de load balancers**, ou qualquer situação com **reverse proxy**, a requisição passa por intermediários antes de chegar ao Laravel:
+
+```
+Usuário → Proxy/Load Balancer → Laravel
+```
+
+O proxy adiciona **headers especiais** (`X-Forwarded-*`) com as informações originais da requisição, mas por segurança, o Laravel **não confia automaticamente** nesses headers (para evitar ataques de IP spoofing).
+
+**Problema sem Trust Proxies:**
+
+No Codespaces, quando você acessa:
+```
+https://seu-codespace-8000.app.github.dev
+```
+
+Sem confiar no proxy, o Laravel pensa que a requisição veio de:
+```
+http://localhost:8000  ← ERRADO!
+```
+
+Isso causa problemas:
+- ✗ Helper `asset()` gera URLs erradas: `http://localhost/css/app.css`
+- ✗ CSS e JS não carregam (ERR_CONNECTION_RESET)
+- ✗ Redirecionamentos quebram
+- ✗ CSRF tokens podem falhar
+- ✗ URLs em emails ficam incorretas
+
+**Solução: Trust Proxies Middleware**
+
+Configuramos o Laravel para **confiar nos headers do proxy**:
+
+```php
+// bootstrap/app.php
+->withMiddleware(function (Middleware $middleware): void {
+    // Confia em TODOS os proxies ('*')
+    // Útil em Codespaces, Heroku, AWS ELB, etc.
+    $middleware->trustProxies(
+        '*',  // ← Confia em qualquer proxy
+        \Symfony\Component\HttpFoundation\Request::HEADER_X_FORWARDED_FOR      // IP original
+        | \Symfony\Component\HttpFoundation\Request::HEADER_X_FORWARDED_HOST   // Host original
+        | \Symfony\Component\HttpFoundation\Request::HEADER_X_FORWARDED_PROTO  // Protocolo (http/https)
+        | \Symfony\Component\HttpFoundation\Request::HEADER_X_FORWARDED_PORT   // Porta original
+        | \Symfony\Component\HttpFoundation\Request::HEADER_X_FORWARDED_PREFIX // Prefixo de path
+    );
+})
+```
+
+**O que cada header faz:**
+
+| Header | Propósito | Exemplo |
+|--------|-----------|---------|
+| `X-Forwarded-For` | IP real do cliente | `203.0.113.42` |
+| `X-Forwarded-Host` | Domínio original | `seu-codespace-8000.app.github.dev` |
+| `X-Forwarded-Proto` | Protocolo original | `https` |
+| `X-Forwarded-Port` | Porta original | `443` |
+| `X-Forwarded-Prefix` | Prefixo de caminho | `/app` (se houver) |
+
+**Com Trust Proxies configurado:**
+
+✓ `asset('css/app.css')` gera: `https://seu-codespace-8000.app.github.dev/css/app.css`
+✓ CSS e JS carregam perfeitamente
+✓ Redirecionamentos funcionam corretamente
+✓ CSRF tokens válidos
+✓ URLs em emails corretas
+
+**Quando usar `'*'` (todos os proxies):**
+
+✅ **Seguro em:**
+- GitHub Codespaces
+- Heroku
+- AWS Elastic Load Balancer
+- Cloudflare
+- Ambientes onde você controla a infraestrutura
+
+⚠️ **Cuidado em servidores compartilhados**: Em hosting compartilhado, prefira especificar IPs confiáveis:
+
+```php
+$middleware->trustProxies(
+    ['192.168.1.1', '10.0.0.0/8'],  // IPs específicos
+    Request::HEADER_X_FORWARDED_ALL
+);
+```
+
+**Alternativa ao Trust Proxies:**
+
+Se não quiser confiar em proxies, você pode configurar o `APP_URL` manualmente no `.env`:
+
+```env
+# Não recomendado - precisa mudar toda vez que URL mudar
+APP_URL=https://seu-codespace-8000.app.github.dev
+```
+
+Mas isso é trabalhoso e impraticável em ambientes dinâmicos como Codespaces (URL muda a cada inicialização).
+
+**Resumo:**
+
+- 🎯 **Trust Proxies** permite que Laravel funcione corretamente atrás de proxies/load balancers
+- 🔧 Configurado em `bootstrap/app.php` no Laravel 11+
+- 🌐 Essencial para Codespaces, produção, e ambientes com reverse proxy
+- ✅ Resolve problemas de assets, URLs e redirecionamentos
+- 🔒 Use `'*'` em ambientes controlados, IPs específicos em compartilhados
 
 ### 6. Views (Blade Templates)
 
@@ -1167,6 +1281,53 @@ use App\Models\TipoNoticia;
 - Use `App\Models\Usuario` em vez de `App\Models\User`
 - Verifique `config/auth.php` - deve estar configurado para `Usuario::class`
 - A tabela no banco é `usuarios`, não `users`
+
+### Erro: "SQLSTATE[HY000]: General error: 1824 Failed to open the referenced table"
+
+**Causa**: Migrações executando na ordem errada. A tabela `noticias` tenta criar uma chave estrangeira para `tipos_noticias` antes dessa existir.
+
+**Solução**: 
+- Verificar os timestamps dos arquivos de migration
+- `tipo_noticias` deve ter timestamp MENOR (executar antes)
+- `noticias` deve ter timestamp MAIOR (executar depois)
+- Se necessário, renomeie os arquivos para ajustar a ordem
+- Execute `php artisan migrate:fresh` para recriar tudo
+
+**Exemplo correto:**
+```
+2025_11_03_232512_create_tipo_noticias_table.php  ← 232512
+2025_11_03_232513_create_noticias_table.php       ← 232513
+```
+
+### Assets (CSS/JS) não carregam no Codespaces
+
+**Causa**: Laravel não confia nos headers de proxy do Codespaces.
+
+**Solução**: Este projeto já está configurado com `trustProxies` middleware em `bootstrap/app.php`. 
+
+Se você ainda tem problemas:
+
+1. **Verifique a configuração** em `bootstrap/app.php`:
+
+```php
+->withMiddleware(function (Middleware $middleware): void {
+    $middleware->trustProxies('*', Request::HEADER_X_FORWARDED_ALL);
+})
+```
+
+2. **Reinicie o servidor**:
+```bash
+# Pare (Ctrl+C) e reinicie
+php artisan serve --host=0.0.0.0 --port=8000
+```
+
+3. **Limpe o cache**:
+```bash
+php artisan config:clear
+php artisan cache:clear
+```
+
+📖 **Para entender melhor**, leia a seção [Middleware Trust Proxies](#middleware-trust-proxies-configuração-para-codespacesprodução) na documentação.
 
 ### Erro: "SQLSTATE[HY000] [2002] Connection refused"
 
