@@ -17,6 +17,6 @@
       }
     }
   },
-  "postCreateCommand": "composer --version || true",
+  "postCreateCommand": "bash -c 'composer install && cp -n .env.example .env && php artisan key:generate'",
   "remoteUser": "vscode"
 }

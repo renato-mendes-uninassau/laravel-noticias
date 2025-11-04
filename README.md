@@ -210,12 +210,40 @@ code .
 
 #### 4. Configure o ambiente dentro do container
 
-O `.env` já está pré-configurado para funcionar com o container! Apenas rode:
-
+O Dev Container executa automaticamente na primeira vez:
 ```bash
 composer install
+cp .env.example .env
 php artisan key:generate
 ```
+
+Se precisar executar manualmente ou reconfigurar:
+
+```bash
+# Instale as dependências do Composer
+composer install
+
+# Copie o arquivo de exemplo para .env (apenas se não existir)
+cp .env.example .env
+
+# Gere a chave da aplicação
+php artisan key:generate
+```
+
+#### 5. Configure o arquivo .env para usar o MySQL do container
+
+Edite o arquivo `.env` e altere as configurações do banco de dados:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=db
+DB_PORT=3306
+DB_DATABASE=laravel_news
+DB_USERNAME=laravel
+DB_PASSWORD=laravel
+```
+
+💡 **Nota**: O host é `db` (nome do serviço no docker-compose), não `127.0.0.1`!
 
 ---
 
@@ -225,9 +253,31 @@ php artisan key:generate
 
 #### 2. Aguarde a inicialização (automática)
 
-#### 3. O ambiente será configurado automaticamente!
+#### 3. Configure o ambiente
 
-Basta executar os comandos de inicialização (próxima seção).
+```bash
+# Instale as dependências do Composer
+composer install
+
+# Copie o arquivo de exemplo para .env
+cp .env.example .env
+
+# Gere a chave da aplicação
+php artisan key:generate
+```
+
+#### 4. Configure o arquivo .env para usar o MySQL do container
+
+Edite o arquivo `.env` e altere as configurações do banco de dados:
+
+```env
+DB_CONNECTION=mysql
+DB_HOST=db
+DB_PORT=3306
+DB_DATABASE=laravel_news
+DB_USERNAME=laravel
+DB_PASSWORD=laravel
+```
 
 ---
 
